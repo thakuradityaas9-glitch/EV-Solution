@@ -2,7 +2,7 @@ export default function StationDetailsModal({ station, onClose }) {
   if (!station) return null
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 px-4 py-6 sm:items-center sm:px-6">
-      <div className="w-full max-w-3xl overflow-hidden rounded-[32px] bg-white shadow-2xl shadow-slate-900/30">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-hidden rounded-[28px] bg-white shadow-2xl shadow-slate-900/30">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-700">Station details</p>
