@@ -1,5 +1,17 @@
 export default function StationDetailsModal({ station, onClose }) {
   if (!station) return null
+
+  const score = station.calculatedScore ?? station.recommendationScore
+
+  const scoreLabel =
+    score >= 80
+      ? 'Excellent choice'
+      : score >= 60
+        ? 'Good choice'
+        : score >= 40
+          ? 'Fair choice'
+          : 'Poor choice'
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 px-4 py-6 sm:items-center sm:px-6">
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-hidden rounded-[28px] bg-white shadow-2xl shadow-slate-900/30">
@@ -39,13 +51,68 @@ export default function StationDetailsModal({ station, onClose }) {
             </div>
           </div>
           <div className="space-y-5">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Why this station</p>
-              <ul className="mt-4 space-y-3 text-slate-700">
-                <li>✓ Low waiting time</li>
-                <li>✓ Small route deviation</li>
-                <li>✓ High-speed charging</li>
-                <li>✓ {station.availableChargers} chargers currently available</li>
+            <div className="rounded-[22px] border border-cyan-100 bg-cyan-50/50 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.15em] text-cyan-700">
+                    Recommendation
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Based on current station conditions
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-cyan-700">
+                    {score}
+                  </p>
+
+                  <p className="text-xs font-medium text-slate-500">
+                    / 100
+                  </p>
+
+                  <p className="text-xs font-semibold text-cyan-700">
+                    {scoreLabel}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-cyan-100">
+                <div
+                  className="h-full rounded-full bg-cyan-600 transition-all"
+                  style={{
+                    width: `${score}%`,
+                  }}
+                />
+              </div>
+
+              <p className="mt-4 text-sm font-semibold text-slate-800">
+                Why this station?
+              </p>
+
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {station.waitMin <= 5 && (
+                  <li>✓ Low waiting time ({station.waitMin} min)</li>
+                )}
+
+                {station.availableChargers > 0 && (
+                  <li>
+                    ✓ {station.availableChargers} charger
+                    {station.availableChargers > 1 ? 's' : ''} available
+                  </li>
+                )}
+
+                {station.speedKW >= 120 && (
+                  <li>✓ High-speed charging ({station.speedKW} kW)</li>
+                )}
+
+                {station.rating >= 4.5 && (
+                  <li>✓ Highly rated ({station.rating}/5)</li>
+                )}
+
+                {station.deviationKm <= 1 && (
+                  <li>✓ Small route deviation ({station.deviationKm} km)</li>
+                )}
               </ul>
             </div>
             <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">

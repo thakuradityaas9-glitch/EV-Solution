@@ -1,4 +1,4 @@
-export default function StationMarker({ station, onClick }) {
+export default function StationMarker({ station, onClick, isRecommended = false }) {
   const availabilityPercentage =
     (station.availableChargers / station.totalChargers) * 100
 
@@ -23,10 +23,18 @@ export default function StationMarker({ station, onClick }) {
     >
       {/* Marker */}
       <div
-        className="relative flex h-11 w-11 items-center justify-center rounded-full border-4 border-white shadow-lg transition duration-200 group-hover:scale-110"
+        className={`relative flex h-11 w-11 items-center justify-center rounded-full border-4 border-white shadow-lg transition duration-200 group-hover:scale-110 ${
+          isRecommended ? 'animate-pulse ring-4 ring-cyan-300 ring-offset-2' : ''
+        }`}
         style={{ backgroundColor: markerColor }}
       >
         <span className="text-lg">⚡</span>
+
+        {isRecommended && (
+          <span className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-cyan-700 px-3 py-1 text-[10px] font-bold text-white shadow-lg">
+            ⭐ Recommended
+          </span>
+        )}
       </div>
 
       {/* Station name */}

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { driverStations } from '../../data/driverStations.js'
 import StationMarker from './StationMarker.jsx'
 
-export default function DriverMap({ onStationSelect, showRoute, onRouteToggle }) {
+export default function DriverMap({ onStationSelect, recommendedStation, showRoute, onRouteToggle }) {
   const [zoom, setZoom] = useState(1)
 
   return (
@@ -131,6 +131,7 @@ export default function DriverMap({ onStationSelect, showRoute, onRouteToggle })
             key={station.id}
             station={station}
             onClick={onStationSelect}
+            isRecommended={recommendedStation?.id === station.id}
           />
         ))}
       </div>

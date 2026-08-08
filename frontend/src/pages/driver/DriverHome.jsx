@@ -4,34 +4,68 @@ import DriverMap from '../../components/driver/DriverMap.jsx'
 import DriverHeader from '../../components/driver/DriverHeader.jsx'
 import StationDetailsModal from '../../components/driver/StationDetailsModal.jsx'
 import { driverStations } from '../../data/driverStations.js'
+import {
+  findBestChargingStation,
+  findEmergencyChargingStation,
+} from '../../services/chargerRecommendation.js'
 
 export default function DriverHome() {
   const [emergencyActive, setEmergencyActive] = useState(false)
   const [selectedStation, setSelectedStation] = useState(null)
   const [showRoute, setShowRoute] = useState(false)
   const [destination, setDestination] = useState('')
+  const [recommendedStation, setRecommendedStation] = useState(null)
+  const [nearbyMode, setNearbyMode] = useState(false)
 
   const currentStation = driverStations[0]
 
   const findBestCharger = () => {
-    if (!destination.trim()) {
+  if (!destination.trim()) {
+    return
+  }
+
+  const bestStation = findBestChargingStation(driverStations)
+
+  if (!bestStation) {
+    return
+  }
+
+  setRecommendedStation(bestStation)
+  setSelectedStation(bestStation)
+  setShowRoute(true)
+  }
+
+  const activateEmergencyMode = () => {
+    const emergencyStation =
+      findEmergencyChargingStation(driverStations)
+
+    if (!emergencyStation) {
       return
     }
 
-    const availableStations = driverStations.filter(
-      (station) => station.reachable && station.availableChargers > 0
-    )
-
-    if (availableStations.length === 0) {
-      return
-    }
-
-    const bestStation = [...availableStations].sort(
-      (a, b) => b.recommendationScore - a.recommendationScore
-    )[0]
-
-    setSelectedStation(bestStation)
+    setEmergencyActive(true)
+    setNearbyMode(false)
+    setRecommendedStation(emergencyStation)
+    setSelectedStation(emergencyStation)
     setShowRoute(true)
+  }
+
+  const showNearbyChargers = () => {
+    const nearbyStations = driverStations
+      .filter(
+        (station) =>
+          station.reachable && station.availableChargers > 0
+      )
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+
+    if (nearbyStations.length === 0) {
+      return
+    }
+
+    setNearbyMode(true)
+    setRecommendedStation(null)
+    setShowRoute(false)
+    setSelectedStation(nearbyStations[0])
   }
 
   return (
@@ -89,11 +123,27 @@ export default function DriverHome() {
               <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
                 <p className="text-sm font-semibold text-slate-500">Quick access</p>
                 <div className="mt-5 space-y-4">
-                  <button className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-left text-sm font-semibold text-slate-950 transition hover:border-slate-300 hover:bg-slate-100">
+                  <button
+                    type="button"
+                    onClick={showNearbyChargers}
+                    className={`w-full rounded-3xl border px-5 py-4 text-left text-sm font-semibold transition ${
+                      nearbyMode
+                        ? 'border-cyan-300 bg-cyan-50 text-cyan-800'
+                        : 'border-slate-200 bg-slate-50 text-slate-950 hover:border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
                     Nearby Chargers
                   </button>
-                  <button className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-left text-sm font-semibold text-slate-950 transition hover:border-slate-300 hover:bg-slate-100">
-                    Emergency Mode
+                  <button
+                    type="button"
+                    onClick={activateEmergencyMode}
+                    className={`w-full rounded-3xl border px-5 py-4 text-left text-sm font-semibold transition ${
+                      emergencyActive
+                        ? 'border-red-300 bg-red-50 text-red-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-950 hover:border-red-200 hover:bg-red-50'
+                    }`}
+                  >
+                    {emergencyActive ? 'Emergency Mode Active' : 'Emergency Mode'}
                   </button>
                 </div>
               </div>
@@ -120,12 +170,16 @@ export default function DriverHome() {
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-700">Map preview</p>
               <p className="mt-3 text-base text-slate-600">Explore nearby charging stations and find the best option for your route.</p>
             </div>
-            <DriverMap onStationSelect={(station) => {
-              setSelectedStation(station)
-              setShowRoute(false)
-            }} 
-            showRoute={showRoute} 
-            onRouteToggle={() => setShowRoute((current) => !current)}/>
+            <DriverMap
+              onStationSelect={(station) => {
+                setSelectedStation(station)
+                setShowRoute(false)
+                setNearbyMode(false)
+              }}
+              recommendedStation={recommendedStation}
+              showRoute={showRoute}
+              onRouteToggle={() => setShowRoute((current) => !current)}
+            />
           </div>
         </section>
       </div>
