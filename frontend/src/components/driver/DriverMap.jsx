@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { driverStations } from '../../data/driverStations.js'
 import StationMarker from './StationMarker.jsx'
 
-export default function DriverMap({ onStationSelect }) {
+export default function DriverMap({ onStationSelect, showRoute, onRouteToggle }) {
   const [zoom, setZoom] = useState(1)
-  const [showRoute, setShowRoute] = useState(false)
 
   return (
     <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-[#e8f0e4] shadow-sm shadow-slate-200/40">
@@ -169,7 +168,7 @@ export default function DriverMap({ onStationSelect }) {
 
         <button
           type="button"
-          onClick={() => setShowRoute((current) => !current)}
+          onClick={() => onRouteToggle?.()}
           className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-semibold shadow-lg transition ${
             showRoute
               ? 'bg-cyan-700 text-white'

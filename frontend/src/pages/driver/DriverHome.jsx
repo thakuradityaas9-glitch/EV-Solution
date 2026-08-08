@@ -8,8 +8,26 @@ import { driverStations } from '../../data/driverStations.js'
 export default function DriverHome() {
   const [emergencyActive, setEmergencyActive] = useState(false)
   const [selectedStation, setSelectedStation] = useState(null)
+  const [showRoute, setShowRoute] = useState(false)
 
   const currentStation = driverStations[0]
+
+  const findBestCharger = () => {
+    const availableStations = driverStations.filter(
+      (station) => station.reachable && station.availableChargers > 0
+    )
+
+    if (availableStations.length === 0) {
+      return
+    }
+
+    const bestStation = [...availableStations].sort(
+      (a, b) => b.recommendationScore - a.recommendationScore
+    )[0]
+
+    setSelectedStation(bestStation)
+    setShowRoute(true)
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
@@ -51,7 +69,8 @@ export default function DriverHome() {
                   <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
                     <p className="text-sm font-medium text-slate-600">Trip action</p>
                     <p className="mt-3 text-lg font-semibold text-slate-950">Find the best charger for your route</p>
-                    <button className="mt-6 inline-flex w-full items-center justify-center rounded-3xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-800">
+                    <button className="mt-6 inline-flex w-full items-center justify-center rounded-3xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-800"
+                    type='button' onClick={findBestCharger}>
                       Find Best Charger
                     </button>
                   </div>
@@ -94,7 +113,12 @@ export default function DriverHome() {
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-700">Map preview</p>
               <p className="mt-3 text-base text-slate-600">Explore nearby charging stations and find the best option for your route.</p>
             </div>
-            <DriverMap onStationSelect={setSelectedStation} />
+            <DriverMap onStationSelect={(station) => {
+              setSelectedStation(station)
+              setShowRoute(false)
+            }} 
+            showRoute={showRoute} 
+            onRouteToggle={() => setShowRoute((current) => !current)}/>
           </div>
         </section>
       </div>
