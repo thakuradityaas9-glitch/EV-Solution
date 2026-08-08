@@ -17,6 +17,10 @@ export const driverStations = [
     reviews: 48,
     recommendationScore: 95,
     reachable: true,
+    mapPosition: {
+      x: '28%',
+      y: '62%',
+    },
   },
   {
     id: 'polar-park',
@@ -36,6 +40,10 @@ export const driverStations = [
     reviews: 62,
     recommendationScore: 91,
     reachable: true,
+    mapPosition: {
+      x: '42%',
+      y: '42%',
+    },
   },
   {
     id: 'blueway-central',
@@ -55,6 +63,10 @@ export const driverStations = [
     reviews: 34,
     recommendationScore: 82,
     reachable: true,
+    mapPosition: {
+      x: '63%',
+      y: '55%',
+    },
   },
   {
     id: 'redline-express',
@@ -74,5 +86,9 @@ export const driverStations = [
     reviews: 28,
     recommendationScore: 76,
     reachable: false,
+    mapPosition: {
+      x: '78%',
+      y: '30%',
+    },
   },
 ]

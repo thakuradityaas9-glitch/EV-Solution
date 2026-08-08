@@ -1,17 +1,14 @@
 import { useState } from 'react'
 import BatteryIndicator from '../../components/driver/BatteryIndicator.jsx'
-import DriverMapPlaceholder from '../../components/driver/DriverMapPlaceholder.jsx'
+import DriverMap from '../../components/driver/DriverMap.jsx'
 import DriverHeader from '../../components/driver/DriverHeader.jsx'
+import StationDetailsModal from '../../components/driver/StationDetailsModal.jsx'
 import { driverStations } from '../../data/driverStations.js'
-
-const mapMarkers = [
-  { id: 'charger-1', cx: 210, cy: 290, color: '#34D399', stroke: '#86EFAC' },
-  { id: 'charger-2', cx: 320, cy: 230, color: '#38BDF8', stroke: '#7DD3FC' },
-  { id: 'charger-3', cx: 500, cy: 170, color: '#FBBF24', stroke: '#fde68a' },
-]
 
 export default function DriverHome() {
   const [emergencyActive, setEmergencyActive] = useState(false)
+  const [selectedStation, setSelectedStation] = useState(null)
+
   const currentStation = driverStations[0]
 
   return (
@@ -95,12 +92,19 @@ export default function DriverHome() {
           <div className="space-y-6">
             <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-700">Map preview</p>
-              <p className="mt-3 text-base text-slate-600">A route preview that can be replaced by a real map API later.</p>
+              <p className="mt-3 text-base text-slate-600">Explore nearby charging stations and find the best option for your route.</p>
             </div>
-            <DriverMapPlaceholder markers={mapMarkers} />
+            <DriverMap onStationSelect={setSelectedStation} />
           </div>
         </section>
       </div>
+
+      {selectedStation && (
+        <StationDetailsModal
+          station={selectedStation}
+          onClose={() => setSelectedStation(null)}
+        />
+      )}
     </main>
   )
 }
