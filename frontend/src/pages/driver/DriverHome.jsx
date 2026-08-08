@@ -1,18 +1,72 @@
 import { useState } from 'react'
 import BatteryIndicator from '../../components/driver/BatteryIndicator.jsx'
-import DriverMapPlaceholder from '../../components/driver/DriverMapPlaceholder.jsx'
+import DriverMap from '../../components/driver/DriverMap.jsx'
 import DriverHeader from '../../components/driver/DriverHeader.jsx'
+import StationDetailsModal from '../../components/driver/StationDetailsModal.jsx'
 import { driverStations } from '../../data/driverStations.js'
-
-const mapMarkers = [
-  { id: 'charger-1', cx: 210, cy: 290, color: '#34D399', stroke: '#86EFAC' },
-  { id: 'charger-2', cx: 320, cy: 230, color: '#38BDF8', stroke: '#7DD3FC' },
-  { id: 'charger-3', cx: 500, cy: 170, color: '#FBBF24', stroke: '#fde68a' },
-]
+import {
+  findBestChargingStation,
+  findEmergencyChargingStation,
+} from '../../services/chargerRecommendation.js'
 
 export default function DriverHome() {
   const [emergencyActive, setEmergencyActive] = useState(false)
+  const [selectedStation, setSelectedStation] = useState(null)
+  const [showRoute, setShowRoute] = useState(false)
+  const [destination, setDestination] = useState('')
+  const [recommendedStation, setRecommendedStation] = useState(null)
+  const [nearbyMode, setNearbyMode] = useState(false)
+
   const currentStation = driverStations[0]
+
+  const findBestCharger = () => {
+  if (!destination.trim()) {
+    return
+  }
+
+  const bestStation = findBestChargingStation(driverStations)
+
+  if (!bestStation) {
+    return
+  }
+
+  setRecommendedStation(bestStation)
+  setSelectedStation(bestStation)
+  setShowRoute(true)
+  }
+
+  const activateEmergencyMode = () => {
+    const emergencyStation =
+      findEmergencyChargingStation(driverStations)
+
+    if (!emergencyStation) {
+      return
+    }
+
+    setEmergencyActive(true)
+    setNearbyMode(false)
+    setRecommendedStation(emergencyStation)
+    setSelectedStation(emergencyStation)
+    setShowRoute(true)
+  }
+
+  const showNearbyChargers = () => {
+    const nearbyStations = driverStations
+      .filter(
+        (station) =>
+          station.reachable && station.availableChargers > 0
+      )
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+
+    if (nearbyStations.length === 0) {
+      return
+    }
+
+    setNearbyMode(true)
+    setRecommendedStation(null)
+    setShowRoute(false)
+    setSelectedStation(nearbyStations[0])
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
@@ -43,6 +97,8 @@ export default function DriverHome() {
                     <label className="text-sm font-medium text-slate-600">To</label>
                     <input
                       type="text"
+                      value={destination}
+                      onChange={(event) => setDestination(event.target.value)}
                       placeholder="Enter destination"
                       className="mt-3 w-full rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
                     />
@@ -54,7 +110,8 @@ export default function DriverHome() {
                   <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
                     <p className="text-sm font-medium text-slate-600">Trip action</p>
                     <p className="mt-3 text-lg font-semibold text-slate-950">Find the best charger for your route</p>
-                    <button className="mt-6 inline-flex w-full items-center justify-center rounded-3xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-800">
+                    <button className="mt-6 inline-flex w-full items-center justify-center rounded-3xl bg-cyan-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-800"
+                    type='button' onClick={findBestCharger}>
                       Find Best Charger
                     </button>
                   </div>
@@ -66,11 +123,27 @@ export default function DriverHome() {
               <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
                 <p className="text-sm font-semibold text-slate-500">Quick access</p>
                 <div className="mt-5 space-y-4">
-                  <button className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-left text-sm font-semibold text-slate-950 transition hover:border-slate-300 hover:bg-slate-100">
+                  <button
+                    type="button"
+                    onClick={showNearbyChargers}
+                    className={`w-full rounded-3xl border px-5 py-4 text-left text-sm font-semibold transition ${
+                      nearbyMode
+                        ? 'border-cyan-300 bg-cyan-50 text-cyan-800'
+                        : 'border-slate-200 bg-slate-50 text-slate-950 hover:border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
                     Nearby Chargers
                   </button>
-                  <button className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-left text-sm font-semibold text-slate-950 transition hover:border-slate-300 hover:bg-slate-100">
-                    Emergency Mode
+                  <button
+                    type="button"
+                    onClick={activateEmergencyMode}
+                    className={`w-full rounded-3xl border px-5 py-4 text-left text-sm font-semibold transition ${
+                      emergencyActive
+                        ? 'border-red-300 bg-red-50 text-red-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-950 hover:border-red-200 hover:bg-red-50'
+                    }`}
+                  >
+                    {emergencyActive ? 'Emergency Mode Active' : 'Emergency Mode'}
                   </button>
                 </div>
               </div>
@@ -95,12 +168,28 @@ export default function DriverHome() {
           <div className="space-y-6">
             <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-700">Map preview</p>
-              <p className="mt-3 text-base text-slate-600">A route preview that can be replaced by a real map API later.</p>
+              <p className="mt-3 text-base text-slate-600">Explore nearby charging stations and find the best option for your route.</p>
             </div>
-            <DriverMapPlaceholder markers={mapMarkers} />
+            <DriverMap
+              onStationSelect={(station) => {
+                setSelectedStation(station)
+                setShowRoute(false)
+                setNearbyMode(false)
+              }}
+              recommendedStation={recommendedStation}
+              showRoute={showRoute}
+              onRouteToggle={() => setShowRoute((current) => !current)}
+            />
           </div>
         </section>
       </div>
+
+      {selectedStation && (
+        <StationDetailsModal
+          station={selectedStation}
+          onClose={() => setSelectedStation(null)}
+        />
+      )}
     </main>
   )
 }
