@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Charger ROI Calibration</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #0a0a0a; color: #fafafa; }
+  header { padding: 16px 24px; border-bottom: 1px solid #262626; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  header p { font-size: 12px; color: #a3a3a3; margin: 0; }
+  main { display: flex; gap: 16px; padding: 16px 24px; align-items: flex-start; flex-wrap: wrap; }
+  #canvasWrap { position: relative; border: 1px solid #262626; max-width: 100%; }
+  canvas { display: block; max-width: 100%; cursor: crosshair; }
+  #sidebar { min-width: 300px; flex: 1; }
+  #sidebar h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #10b981; margin: 0 0 8px; }
+  ul#roiList { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 6px; }
+  ul#roiList li { display: flex; align-items: center; gap: 8px; background: #171717; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  ul#roiList li input { background: transparent; border: 1px solid #404040; border-radius: 4px; color: #fafafa; padding: 4px 6px; font-size: 12px; width: 110px; }
+  ul#roiList li button { margin-left: auto; background: none; border: none; color: #dc2626; cursor: pointer; font-size: 12px; }
+  ul#roiList li .badge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 999px; padding: 2px 8px; font-weight: 600; }
+  ul#roiList li .badge.charger { background: #05966933; color: #10b981; }
+  ul#roiList li .badge.queue { background: #f59e0b33; color: #f59e0b; }
+  textarea { width: 100%; height: 180px; background: #171717; color: #a7f3d0; border: 1px solid #262626; border-radius: 8px; padding: 10px; font-family: ui-monospace, monospace; font-size: 12px; box-sizing: border-box; margin-bottom: 12px; }
+  button.primary { background: #059669; color: white; border: none; border-radius: 999px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+  button.secondary { background: transparent; color: #fafafa; border: 1px solid #404040; border-radius: 999px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+  input[type="file"] { color: #fafafa; font-size: 13px; }
+  .row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .hint { font-size: 12px; color: #a3a3a3; margin: 8px 0 16px; line-height: 1.5; }
+  .modeToggle { display: inline-flex; border: 1px solid #404040; border-radius: 999px; padding: 3px; }
+  .modeToggle button { border: none; background: none; color: #a3a3a3; font-size: 12px; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+  .modeToggle button.active.charger { background: #059669; color: white; }
+  .modeToggle button.active.queue { background: #f59e0b; color: #0a0a0a; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Charger ROI Calibration</h1>
+  <p>Upload a still frame from the real camera, draw one box per charger slot, copy the JSON into your <code>rois</code> form field.</p>
+</header>
+
+<main>
+  <div>
+    <div class="row">
+      <input type="file" id="imageInput" accept="image/*" />
+      <div class="modeToggle">
+        <button id="chargerModeBtn" class="active charger">Charger</button>
+        <button id="queueModeBtn" class="queue">Queue</button>
+      </div>
+    </div>
+    <div id="canvasWrap">
+      <canvas id="canvas"></canvas>
+    </div>
+    <p class="hint">
+      Pick a mode, then click and drag to draw boxes. <strong>Charger</strong> mode: one box per
+      charging bay, left to right &mdash; draw tight around where a car actually sits when parked.
+      <strong>Queue</strong> mode: one or more boxes covering the waiting lane where cars line up
+      before a bay frees. The two never need to touch or overlap.
+    </p>
+  </div>
+
+  <div id="sidebar">
+    <h2>Slots (<span id="slotCount">0</span>)</h2>
+    <ul id="roiList"></ul>
+
+    <div class="row">
+      <button class="secondary" id="clearBtn">Clear all</button>
+      <button class="primary" id="copyBtn">Copy JSON</button>
+    </div>
+
+    <h2>charger_rois</h2>
+    <textarea id="outputCharger" readonly placeholder="Draw a charger box to see JSON here..."></textarea>
+    <h2>queue_rois</h2>
+    <textarea id="outputQueue" readonly placeholder="Draw a queue box to see JSON here..."></textarea>
+  </div>
+</main>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const imageInput = document.getElementById('imageInput');
+const roiList = document.getElementById('roiList');
+const outputCharger = document.getElementById('outputCharger');
+const outputQueue = document.getElementById('outputQueue');
+const slotCount = document.getElementById('slotCount');
+const clearBtn = document.getElementById('clearBtn');
+const copyBtn = document.getElementById('copyBtn');
+const chargerModeBtn = document.getElementById('chargerModeBtn');
+const queueModeBtn = document.getElementById('queueModeBtn');
+
+let img = null;
+let rois = []; // {label, kind, x1, y1, x2, y2} in natural image pixel coords
+let drawing = false;
+let startX = 0, startY = 0;
+let scale = 1;
+let mode = 'charger'; // 'charger' | 'queue'
+
+chargerModeBtn.addEventListener('click', () => setMode('charger'));
+queueModeBtn.addEventListener('click', () => setMode('queue'));
+function setMode(m) {
+  mode = m;
+  chargerModeBtn.classList.toggle('active', m === 'charger');
+  queueModeBtn.classList.toggle('active', m === 'queue');
+}
+
+imageInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    img = new Image();
+    img.onload = () => {
+      const maxW = Math.min(window.innerWidth - 360, 1000);
+      scale = Math.min(1, maxW / img.width);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      rois = [];
+      render();
+      updateOutput();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+function render() {
+  if (!img) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  rois.forEach((r) => {
+    ctx.strokeStyle = r.kind === 'queue' ? '#f59e0b' : '#10b981';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x1 * scale, r.y1 * scale, (r.x2 - r.x1) * scale, (r.y2 - r.y1) * scale);
+    ctx.fillStyle = r.kind === 'queue' ? '#f59e0b' : '#10b981';
+    ctx.font = '13px system-ui';
+    ctx.fillText(r.label, r.x1 * scale + 4, r.y1 * scale + 16);
+  });
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!img) return;
+  const rect = canvas.getBoundingClientRect();
+  startX = (e.clientX - rect.left) / scale;
+  startY = (e.clientY - rect.top) / scale;
+  drawing = true;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!drawing) return;
+  const rect = canvas.getBoundingClientRect();
+  const curX = (e.clientX - rect.left) / scale;
+  const curY = (e.clientY - rect.top) / scale;
+  render();
+  ctx.strokeStyle = mode === 'queue' ? '#fbbf24' : '#34d399';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(startX * scale, startY * scale, (curX - startX) * scale, (curY - startY) * scale);
+  ctx.setLineDash([]);
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!drawing) return;
+  drawing = false;
+  const rect = canvas.getBoundingClientRect();
+  const endX = (e.clientX - rect.left) / scale;
+  const endY = (e.clientY - rect.top) / scale;
+
+  const x1 = Math.round(Math.min(startX, endX));
+  const y1 = Math.round(Math.min(startY, endY));
+  const x2 = Math.round(Math.max(startX, endX));
+  const y2 = Math.round(Math.max(startY, endY));
+
+  if (x2 - x1 < 5 || y2 - y1 < 5) { render(); return; } // ignore accidental clicks
+
+  const sameKindCount = rois.filter(r => r.kind === mode).length;
+  const label = mode === 'queue'
+    ? (sameKindCount === 0 ? 'Queue' : `Queue ${sameKindCount + 1}`)
+    : `Charger ${String(sameKindCount + 1).padStart(2, '0')}`;
+
+  rois.push({ label, kind: mode, x1, y1, x2, y2 });
+  render();
+  renderList();
+  updateOutput();
+});
+
+function renderList() {
+  roiList.innerHTML = '';
+  slotCount.textContent = rois.length;
+  rois.forEach((r, i) => {
+    const li = document.createElement('li');
+
+    const badge = document.createElement('span');
+    badge.className = `badge ${r.kind}`;
+    badge.textContent = r.kind;
+
+    const input = document.createElement('input');
+    input.value = r.label;
+    input.addEventListener('input', () => { r.label = input.value; render(); updateOutput(); });
+
+    const del = document.createElement('button');
+    del.textContent = 'Remove';
+    del.addEventListener('click', () => { rois.splice(i, 1); render(); renderList(); updateOutput(); });
+
+    li.appendChild(badge);
+    li.appendChild(input);
+    li.appendChild(del);
+    roiList.appendChild(li);
+  });
+}
+
+function toApiShape(list) {
+  return list.map(r => ({ slot_label: r.label, x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2 }));
+}
+
+function updateOutput() {
+  outputCharger.value = JSON.stringify(toApiShape(rois.filter(r => r.kind === 'charger')), null, 2);
+  outputQueue.value = JSON.stringify(toApiShape(rois.filter(r => r.kind === 'queue')), null, 2);
+}
+
+clearBtn.addEventListener('click', () => { rois = []; render(); renderList(); updateOutput(); });
+copyBtn.addEventListener('click', () => {
+  const combined = `charger_rois:\n${outputCharger.value}\n\nqueue_rois:\n${outputQueue.value}`;
+  navigator.clipboard.writeText(combined).then(() => {
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => copyBtn.textContent = 'Copy JSON', 1200);
+  });
+});
+</script>
+
+</body>
+</html>

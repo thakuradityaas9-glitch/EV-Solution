@@ -1,0 +1,50 @@
+# === Environment and Virtual Envs ===
+venv/
+.venv/
+env/
+ENV/
+ENV_DIR/
+
+# === Python / Byte-compiled ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# === IDEs / Editors ===
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# === Operating System Files ===
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# === Computer Vision Specific ===
+# Ignore raw local video/image data dumps
+*.mp4
+*.avi
+*.mkv
+*.jpg
+*.jpeg
+*.png
+*.gif
+/data_inputs/
+/data_outputs/
+
+# === Machine Learning Weights (Ultralytics / YOLO) ===
+*.pt
+*.onnx
+*.engine
+*.tflite
+/weights/
+/models/
+
+# === Environment Configuration ===
+.env
+!.env.example
