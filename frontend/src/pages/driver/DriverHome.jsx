@@ -9,10 +9,15 @@ export default function DriverHome() {
   const [emergencyActive, setEmergencyActive] = useState(false)
   const [selectedStation, setSelectedStation] = useState(null)
   const [showRoute, setShowRoute] = useState(false)
+  const [destination, setDestination] = useState('')
 
   const currentStation = driverStations[0]
 
   const findBestCharger = () => {
+    if (!destination.trim()) {
+      return
+    }
+
     const availableStations = driverStations.filter(
       (station) => station.reachable && station.availableChargers > 0
     )
@@ -58,6 +63,8 @@ export default function DriverHome() {
                     <label className="text-sm font-medium text-slate-600">To</label>
                     <input
                       type="text"
+                      value={destination}
+                      onChange={(event) => setDestination(event.target.value)}
                       placeholder="Enter destination"
                       className="mt-3 w-full rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
                     />
