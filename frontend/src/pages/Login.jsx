@@ -1,6 +1,75 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import supabase from '../lib/supabase'
 
 export default function Login() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState(null)
+  const [messageType, setMessageType] = useState('')
+  const navigate = useNavigate()
+
+  const friendlyError = (err) => {
+    if (!err) return 'An unexpected error occurred.'
+    const msg = err?.message || String(err)
+    if (/invalid login|invalid credentials|invalid email/i.test(msg)) return 'Invalid email or password.'
+    if (/unconfirmed|not confirmed/i.test(msg)) return 'Please verify your email address before signing in.'
+    if (/network/i.test(msg)) return 'Network error. Please try again.'
+    return msg
+  }
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    setMessage(null)
+
+    if (!email.trim()) return setMessageType('error') || setMessage('Email is required.')
+    if (!password) return setMessageType('error') || setMessage('Password is required.')
+
+    setLoading(true)
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) {
+        setMessageType('error')
+        setMessage(friendlyError(error))
+        return
+      }
+
+      const session = data?.session ?? null
+      const user = session?.user ?? data?.user ?? null
+
+      if (!session || !user) {
+        // Possibly unverified email
+        setMessageType('info')
+        setMessage('Check your email to verify your account before signing in.')
+        return
+      }
+
+      // Fetch profile and redirect based on role
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError || !profileData) {
+        setMessageType('error')
+        setMessage('Failed to load profile after sign in.')
+        return
+      }
+
+      if (profileData.role === 'driver') navigate('/driver')
+      else if (profileData.role === 'operator') navigate('/operator')
+      else navigate('/')
+    } catch (err) {
+      setMessageType('error')
+      setMessage(friendlyError(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <main className="min-h-screen bg-white text-slate-950">
       <div className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-12 lg:px-8">
@@ -21,17 +90,23 @@ export default function Login() {
             <Link to="/" className="text-sm text-slate-500 hover:underline">Back to home</Link>
           </div>
 
-          <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
-              <input type="email" placeholder="you@domain.com" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100" />
+              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@domain.com" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100" />
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">Password</label>
-              <input type="password" placeholder="Enter your password" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100" />
+              <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Enter your password" className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100" />
             </div>
 
-            <button type="submit" className="w-full rounded-xl bg-cyan-700 px-4 py-3 text-white font-semibold">Log In</button>
+            {message && (
+              <div className={`rounded-md p-3 text-sm ${messageType === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`} role="status">
+                {message}
+              </div>
+            )}
+
+            <button disabled={loading} type="submit" className="w-full rounded-xl bg-cyan-700 px-4 py-3 text-white font-semibold">{loading ? 'Signing in...' : 'Log In'}</button>
 
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-slate-200" />
