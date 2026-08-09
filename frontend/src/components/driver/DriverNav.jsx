@@ -1,9 +1,6 @@
 import { NavLink } from 'react-router-dom'
 
-const links = [
-  { to: '/driver', label: 'Home' },
-  { to: '/driver/recommendations', label: 'Recommendations' },
-]
+const links = [{ to: '/driver', label: 'Home' }]
 
 export default function DriverNav() {
   return (

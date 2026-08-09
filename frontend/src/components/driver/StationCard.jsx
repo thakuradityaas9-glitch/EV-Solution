@@ -35,6 +35,9 @@ export default function StationCard({ station, highlighted, onViewDetails, emerg
           <span className="font-semibold text-slate-900">⭐ {station.rating}</span>
           <span>{station.amenities.join('   ')}</span>
         </div>
+        {station.reason && (
+          <p className="mt-3 text-sm text-slate-500">{station.reason}</p>
+        )}
         <div className="mt-6 flex flex-wrap gap-3">
           <button onClick={() => onViewDetails(station)} className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
             View Details
