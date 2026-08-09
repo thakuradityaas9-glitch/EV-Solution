@@ -42,9 +42,6 @@ export default function StationCard({ station, highlighted, onViewDetails, emerg
           <button onClick={() => onViewDetails(station)} className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
             View Details
           </button>
-          <button className={`rounded-full px-5 py-3 text-sm font-semibold transition ${emergencyMode ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100' : 'border border-slate-200 bg-white text-slate-950 hover:border-slate-300 hover:bg-slate-50'}`}>
-            {emergencyMode ? 'Prioritize Reachability' : 'Route fit'}
-          </button>
         </div>
       </div>
     </article>
