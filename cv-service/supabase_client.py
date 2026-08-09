@@ -60,6 +60,7 @@ async def write_occupancy_result(
                 json={
                     "live_available_chargers": total_chargers - occupied_count,
                     "live_predicted_wait_min": predicted_wait_min,
+                    "live_queue_length": queue_length,
                     "live_updated_at": now,
                 },
             )
