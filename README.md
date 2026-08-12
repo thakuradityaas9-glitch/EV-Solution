@@ -4,7 +4,7 @@
 
 > **Charge Smarter. Keep Moving.**
 
-🌐 **Live Demo:** https://YOUR-DEPLOYED-LINK.com
+🌐 **Live Demo:** (https://ev-solution-a5eh.onrender.com/)
 
 ---
 
