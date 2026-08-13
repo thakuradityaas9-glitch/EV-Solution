@@ -179,7 +179,7 @@ export default function Signup() {
               <button disabled={loading} type="submit" className="w-full rounded-xl bg-cyan-700 px-4 py-3 text-white font-semibold">
                 {loading ? 'Creating account...' : 'Create Account'}
               </button>
-              <button type="button" disabled className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-700">Continue with Google</button>
+              {/* <button type="button" disabled className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-700">Continue with Google</button> */}
             </div>
           </form>
 

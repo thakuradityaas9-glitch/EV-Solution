@@ -9,7 +9,7 @@ import {
 // Fallback center only used before any search has run (Chandigarh —
 // matches the seeded demo stations). Once a search runs, the map
 // centers on the real origin/route instead.
-const FALLBACK_CENTER = { lat: 30.3398, lng: 76.3869 }
+const FALLBACK_CENTER = { lat: 28.6139, lng: 77.2090 }
 const MAP_ZOOM = 13
 const ROUTE_ZOOM = 14
 
