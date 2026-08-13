@@ -33,7 +33,13 @@ import {
  * @param {{batteryPercent:number, estimatedRangeKm:number} | null} vehicle
  * @param {boolean} emergencyMode
  */
-export function rankStations(stations, vehicle, emergencyMode) {
+export function rankStations(stations, vehicle, emergencyMode, remainingRangeKm = null) {
+  const effectiveRemainingRangeKm =
+    remainingRangeKm ??
+    (vehicle?.estimatedRangeKm && vehicle?.batteryPercent != null
+      ? (vehicle.estimatedRangeKm * vehicle.batteryPercent) / 100
+      : null)
+
   const enriched = stations.map((station) => {
     const distanceToStationKm = station.routeProgressKm + (station.distanceKm ?? 0)
     const routeDeviationMin = Math.round(
@@ -50,6 +56,12 @@ export function rankStations(stations, vehicle, emergencyMode) {
       reachable = batteryOnArrivalPercent >= SAFETY_BUFFER_PERCENT
     }
 
+    if (effectiveRemainingRangeKm != null) {
+      reachable = distanceToStationKm <= effectiveRemainingRangeKm
+    }
+
+    const isUnreachable = !reachable
+
     return {
       ...station,
       deviationKm: station.distanceKm ?? 0, // alias matching StationCard's existing prop name
@@ -60,11 +72,12 @@ export function rankStations(stations, vehicle, emergencyMode) {
       journeyDelayMin: routeDeviationMin + predictedWaitMin,
       distanceToStationKm: Math.round(distanceToStationKm * 10) / 10,
       etaMin,
-      reachable,
+      reachable: !isUnreachable,
       batteryOnArrivalPercent,
       availableChargers:
         station.liveAvailableChargers ??
         Math.max(0, station.totalChargers - Math.ceil(station.totalChargers / 3)), // rough placeholder until every station has a live reading
+      score: isUnreachable ? 0 : null,
     }
   })
 
@@ -86,15 +99,21 @@ export function rankStations(stations, vehicle, emergencyMode) {
         return (b.rating ?? 0) - (a.rating ?? 0)
       })
 
-  return sorted.map((station, index) => ({
-    ...station,
-    reason: buildReason(station, index, sorted, emergencyMode, vehicle),
-    // Monotonic with the actual sort key so the displayed badge never
-    // contradicts the order stations appear in.
-    recommendationScore: emergencyMode
-      ? Math.max(0, 100 - station.etaMin)
-      : Math.max(0, 100 - station.journeyDelayMin),
-  }))
+  return sorted.map((station, index) => {
+    const score = station.reachable
+      ? emergencyMode
+        ? Math.max(0, 100 - station.etaMin)
+        : Math.max(0, 100 - station.journeyDelayMin)
+      : 0
+
+    return {
+      ...station,
+      reason: buildReason(station, index, sorted, emergencyMode, vehicle),
+      recommendationScore: score,
+      score,
+      reachable: station.reachable,
+    }
+  })
 }
 
 function buildReason(station, index, all, emergencyMode, vehicle) {

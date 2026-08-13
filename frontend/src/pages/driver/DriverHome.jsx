@@ -8,11 +8,12 @@ import { fetchStations, fetchVehicle } from '../../services/stations.js'
 import { geocodeAddress, getCurrentLocation, computeRoute } from '../../services/googleRoutes.js'
 import { discoverStationsAlongRoute } from '../../services/discovery.js'
 import { rankStations } from '../../services/chargerRecommendation.js'
+import { VEHICLE_OPTIONS, DEFAULT_SELECTED_VEHICLE_MODEL } from '../../data/vehicles.js'
 
 const DEFAULT_VEHICLE = {
-  model: 'My EV',
-  batteryPercent: 80,
-  estimatedRangeKm: 250,
+  model: DEFAULT_SELECTED_VEHICLE_MODEL,
+  batteryPercent: 60,
+  estimatedRangeKm: 465,
   maxChargingKw: 50,
   connectorType: 'CCS2',
 }
@@ -27,6 +28,7 @@ export default function DriverHome() {
 
   const [vehicle, setVehicle] = useState(DEFAULT_VEHICLE)
   const [vehicleLoaded, setVehicleLoaded] = useState(false)
+  const [chargePercent, setChargePercent] = useState(DEFAULT_VEHICLE.batteryPercent)
 
   const [emergencyActive, setEmergencyActive] = useState(false)
   const [selectedStation, setSelectedStation] = useState(null)
@@ -34,6 +36,13 @@ export default function DriverHome() {
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState(null)
   const [result, setResult] = useState(null) // { route, directRoute, origin, originLabel, destination, destinationLabel, stations }
+
+  const selectedVehicleConfig =
+    VEHICLE_OPTIONS.find((option) => option.model === vehicle.model) || VEHICLE_OPTIONS[0]
+
+  const remainingRangeKm = Math.round(
+    ((selectedVehicleConfig?.rangeKm ?? vehicle.estimatedRangeKm ?? 0) * chargePercent) / 100
+  )
 
   // Load the driver's saved vehicle on mount, if they have one.
   useEffect(() => {
@@ -44,7 +53,10 @@ export default function DriverHome() {
     }
     fetchVehicle(user.id)
       .then((v) => {
-        if (mounted && v) setVehicle(v)
+        if (mounted && v) {
+          setVehicle(v)
+          setChargePercent(v.batteryPercent ?? DEFAULT_VEHICLE.batteryPercent)
+        }
         if (mounted) setVehicleLoaded(true)
       })
       .catch(() => mounted && setVehicleLoaded(true))
@@ -52,6 +64,18 @@ export default function DriverHome() {
       mounted = false
     }
   }, [user?.id])
+
+  useEffect(() => {
+    setVehicle((current) => {
+      if (!current || !current.model) return current
+      const matchingVehicle = VEHICLE_OPTIONS.find((option) => option.model === current.model)
+      if (!matchingVehicle) return current
+      return {
+        ...current,
+        estimatedRangeKm: matchingVehicle.rangeKm,
+      }
+    })
+  }, [vehicle.model])
 
   async function handleUseCurrentLocation(checked) {
     setUseCurrentLocation(checked)
@@ -93,6 +117,17 @@ export default function DriverHome() {
     }
   }
 
+  async function buildRankedStationsForRoute(route, emergencyModeOverride = emergencyActive) {
+    const allStations = await fetchStations()
+    const routePath = route?.path || []
+    const candidates = discoverStationsAlongRoute(routePath, allStations)
+    return rankStations(candidates, {
+      ...vehicle,
+      batteryPercent: chargePercent,
+      estimatedRangeKm: selectedVehicleConfig?.rangeKm ?? vehicle.estimatedRangeKm ?? 0,
+    }, emergencyModeOverride, remainingRangeKm)
+  }
+
   async function runSearch(emergencyMode) {
     if (!useCurrentLocation && !fromText.trim()) {
       setSearchError('Enter a starting point, or use your current location.')
@@ -118,9 +153,7 @@ export default function DriverHome() {
         selectedStation
       )
 
-      const allStations = await fetchStations()
-      const candidates = discoverStationsAlongRoute(directRoute.path, allStations)
-      const ranked = rankStations(candidates, vehicle, emergencyMode)
+      const ranked = await buildRankedStationsForRoute(route, emergencyMode)
 
       setResult({
         route,
@@ -161,12 +194,14 @@ export default function DriverHome() {
     setSearching(true)
     setSearchError(null)
     computeRouteWithOptionalStation(result.origin, result.destination, station)
-      .then(({ route, directRoute, stationRouteError }) => {
+      .then(async ({ route, directRoute, stationRouteError }) => {
+        const ranked = await buildRankedStationsForRoute(route, emergencyActive)
         setResult((current) => ({
           ...current,
           route,
           directRoute,
           stationRouteError,
+          stations: ranked,
         }))
         if (stationRouteError) {
           setSearchError('Could not route through selected station. Showing direct route.')
@@ -183,15 +218,47 @@ export default function DriverHome() {
     setSearchError(null)
     setResult((current) => {
       if (!current) return current
+      const nextRoute = current.directRoute || current.route
       return {
         ...current,
-        route: current.directRoute || current.route,
+        route: nextRoute,
       }
     })
+
+    if (result?.directRoute) {
+      const directRoute = result.directRoute
+      buildRankedStationsForRoute(directRoute, emergencyActive)
+        .then((ranked) => {
+          setResult((current) => {
+            if (!current) return current
+            return {
+              ...current,
+              route: current.directRoute || current.route,
+              stations: ranked,
+            }
+          })
+        })
+        .catch(() => {
+          setSearchError('Could not refresh station list for the direct route.')
+        })
+    }
   }
 
-  const topStation = result?.stations?.[0] || null
-  const restStations = result?.stations?.slice(1) || []
+  const reachableStations = result?.stations?.filter((station) => station.reachable) || []
+  const topStation = reachableStations[0] || null
+  const restStations = result?.stations?.filter((station) => station.id !== topStation?.id) || []
+  const hasReachableStations = reachableStations.length > 0
+
+  const handleVehicleChange = (event) => {
+    const selectedModel = event.target.value
+    const selectedVehicle = VEHICLE_OPTIONS.find((option) => option.model === selectedModel)
+
+    setVehicle((current) => ({
+      ...current,
+      model: selectedModel,
+      estimatedRangeKm: selectedVehicle?.rangeKm ?? current.estimatedRangeKm,
+    }))
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
@@ -223,6 +290,48 @@ export default function DriverHome() {
                   >
                     {emergencyActive ? 'Deactivate Emergency' : 'Activate Emergency'}
                   </button>
+                </div>
+              </div>
+
+              <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_1fr]">
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Vehicle</p>
+                  <label className="mt-4 block">
+                    <span className="sr-only">Select EV</span>
+                    <select
+                      value={vehicle.model}
+                      onChange={handleVehicleChange}
+                      className="w-full rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    >
+                      {VEHICLE_OPTIONS.map((option) => (
+                        <option key={option.model} value={option.model}>
+                          {option.model}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Estimated remaining range</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-950">{remainingRangeKm} km</p>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Current charge</p>
+                  <div className="mt-4 flex items-center justify-between gap-4">
+                    <span className="text-2xl font-semibold text-slate-950">{chargePercent}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={chargePercent}
+                    onChange={(event) => setChargePercent(Number(event.target.value))}
+                    className="mt-5 h-2 w-full accent-cyan-600"
+                    aria-label="Current charge percentage"
+                  />
                 </div>
               </div>
 
@@ -303,6 +412,12 @@ export default function DriverHome() {
                 )}
               </div>
             </div>
+
+            {result?.stations?.length > 0 && !hasReachableStations && (
+              <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 text-amber-900 shadow-sm">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">No reachable charging stations found</p>
+              </div>
+            )}
 
             {topStation && (
               <div className="space-y-5">
