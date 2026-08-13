@@ -114,7 +114,7 @@ export default function Login() {
               <div className="h-px flex-1 bg-slate-200" />
             </div>
 
-            <button type="button" className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-700">Continue with Google</button>
+            {/* <button type="button" className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-700">Continue with Google</button> */}
           </form>
 
           <div className="mt-6 text-center text-sm text-slate-600">

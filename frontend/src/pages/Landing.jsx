@@ -15,7 +15,7 @@ export default function Landing() {
             <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700 ring-1 ring-cyan-200">
               EV
             </span>
-            ChargeIntel
+            SmartCharge
           </a>
           <nav className="flex flex-wrap items-center gap-5 text-sm text-slate-600">
             <a href="#hero" className="transition hover:text-slate-950">Home</a>

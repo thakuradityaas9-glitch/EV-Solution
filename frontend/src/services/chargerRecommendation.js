@@ -81,15 +81,21 @@ export function rankStations(stations, vehicle, emergencyMode, remainingRangeKm 
     }
   })
 
-  // Prefer reachable stations, but don't leave the driver with an
-  // empty list if nothing qualifies — surface the closest option with
-  // a warning reason instead (see buildReason).
+  // When range information is available, every mode uses the same safe
+  // candidate set. Emergency Mode only changes how these candidates rank.
+  const hasRangeInformation = effectiveRemainingRangeKm != null || Boolean(vehicle?.estimatedRangeKm)
   const anyReachable = enriched.some((s) => s.reachable)
-  const candidates = vehicle && anyReachable ? enriched.filter((s) => s.reachable) : enriched
+  const candidates = hasRangeInformation
+    ? anyReachable
+      ? enriched.filter((s) => s.reachable)
+      : []
+    : enriched
+  const emergencyDistances = emergencyMode ? candidates.map((s) => s.distanceToStationKm) : []
+  const minEmergencyDistance = emergencyMode ? Math.min(...emergencyDistances) : null
+  const maxEmergencyDistance = emergencyMode ? Math.max(...emergencyDistances) : null
 
   const sorted = emergencyMode
     ? [...candidates].sort((a, b) => {
-        if (a.etaMin !== b.etaMin) return a.etaMin - b.etaMin
         return (a.distanceToStationKm ?? 0) - (b.distanceToStationKm ?? 0)
       })
     : [...candidates].sort((a, b) => {
@@ -100,11 +106,16 @@ export function rankStations(stations, vehicle, emergencyMode, remainingRangeKm 
       })
 
   return sorted.map((station, index) => {
-    const score = station.reachable
-      ? emergencyMode
-        ? Math.max(0, 100 - station.etaMin)
-        : Math.max(0, 100 - station.journeyDelayMin)
-      : 0
+    const score = emergencyMode
+      ? maxEmergencyDistance === minEmergencyDistance
+        ? 100
+        : Math.round(
+            (100 * (maxEmergencyDistance - station.distanceToStationKm)) /
+              (maxEmergencyDistance - minEmergencyDistance),
+          )
+      : station.reachable
+        ? Math.max(0, 100 - station.journeyDelayMin)
+        : 0
 
     return {
       ...station,

@@ -413,9 +413,13 @@ export default function DriverHome() {
               </div>
             </div>
 
-            {result?.stations?.length > 0 && !hasReachableStations && (
+            {result && !hasReachableStations && (
               <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 text-amber-900 shadow-sm">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">No reachable charging stations found</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">No Reachable Charging Stations</p>
+                <p className="mt-3 text-sm leading-6 text-amber-900">
+                  No charging station in the current search area can be safely reached with your current battery.
+                </p>
+                
               </div>
             )}
 
