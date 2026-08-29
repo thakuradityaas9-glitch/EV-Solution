@@ -4,7 +4,7 @@ import DriverHeader from '../../components/driver/DriverHeader.jsx'
 import StationCard from '../../components/driver/StationCard.jsx'
 import StationDetailsModal from '../../components/driver/StationDetailsModal.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { fetchStations, fetchVehicle } from '../../services/stations.js'
+import { fetchAllStations, fetchVehicle } from '../../services/stations.js'
 import { geocodeAddress, getCurrentLocation, computeRoute } from '../../services/googleRoutes.js'
 import { discoverStationsAlongRoute } from '../../services/discovery.js'
 import { rankStations } from '../../services/chargerRecommendation.js'
@@ -118,7 +118,10 @@ export default function DriverHome() {
   }
 
   async function buildRankedStationsForRoute(route, emergencyModeOverride = emergencyActive) {
-    const allStations = await fetchStations()
+    const allStations = await fetchAllStations({
+  lat: route.path?.[0]?.lat,
+  lng: route.path?.[0]?.lng,
+})
     const routePath = route?.path || []
     const candidates = discoverStationsAlongRoute(routePath, allStations)
     return rankStations(candidates, {
