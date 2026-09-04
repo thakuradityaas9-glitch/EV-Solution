@@ -16,10 +16,10 @@ from both signals together. Completely decoupled from the Next.js app
 
 ```bash
 cd cv-service
-python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env              # fill in SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+conda deactivate
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --no-cache-dir -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
