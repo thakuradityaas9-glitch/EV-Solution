@@ -1,15 +1,6 @@
 import supabase from '../lib/supabase'
-import { fetchOCMStations } from './openChargeMap'
 export async function fetchAllStations({ lat, lng }) {
-  const [supabaseStations, ocmStations] = await Promise.all([
-    fetchStations(),
-
-    lat != null && lng != null
-      ? fetchOCMStations({ lat, lng }).catch(() => [])
-      : [],
-  ])
-
-  return [...supabaseStations, ...ocmStations]
+  return fetchStations()
 }
 
 const AMENITY_LABELS = {
