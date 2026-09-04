@@ -7,6 +7,7 @@ import Recommendations from './pages/driver/Recommendations.jsx'
 import Dashboard from './pages/operator/Dashboard.jsx'
 import LiveOperations from './pages/operator/LiveOperations.jsx'
 import Chargers from './pages/operator/Chargers.jsx'
+import StationDetail from './pages/operator/StationDetail.jsx'
 import Analytics from './pages/operator/Analytics.jsx'
 import DriverLayout from './layouts/DriverLayout.jsx'
 import OperatorLayout from './layouts/OperatorLayout.jsx'
@@ -46,6 +47,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="live" element={<LiveOperations />} />
           <Route path="chargers" element={<Chargers />} />
+          <Route path="stations/:id" element={<StationDetail />} />
           <Route path="analytics" element={<Analytics />} />
         </Route>
 

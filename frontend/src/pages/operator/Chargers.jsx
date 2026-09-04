@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchStations } from '../../services/stations.js'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext.jsx'
+import { createStation, fetchOperatorStations } from '../../services/stations.js'
+import AddStationModal from '../../components/operator/AddStationModal.jsx'
+
 
 function formatNumber(value) {
   return value.toLocaleString('en-US')
@@ -27,12 +32,17 @@ function getStationStatus(station) {
 }
 
 export default function Chargers() {
+<<<<<<< HEAD
+=======
+  const { user } = useAuth()
+>>>>>>> fedacbd (integrating operator dashboard)
   const [stations, setStations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedStation, setSelectedStation] = useState(null)
+<<<<<<< HEAD
 
   useEffect(() => {
     let mounted = true
@@ -56,6 +66,38 @@ export default function Chargers() {
       mounted = false
     }
   }, [])
+=======
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  const loadStations = async () => {
+    setError(null)
+    setLoading(true)
+
+    try {
+      const data = await fetchOperatorStations(user?.id)
+      setStations(data)
+    } catch (err) {
+      setError(err?.message || 'Unable to load charging station data.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true
+    if (mounted) loadStations()
+    return () => {
+      mounted = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
+
+  async function handleCreateStation(payload) {
+    const created = await createStation(user.id, payload)
+    setStations((prev) => [created, ...prev])
+    setShowAddModal(false)
+  }
+>>>>>>> fedacbd (integrating operator dashboard)
 
   const stationSummaries = useMemo(() => {
     const stationsWithTelemetry = stations.filter((station) => station.liveAvailableChargers != null)
@@ -120,10 +162,24 @@ export default function Chargers() {
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Operator Portal</p>
+<<<<<<< HEAD
               <h1 className="mt-2 text-4xl font-semibold text-slate-950">Charging Stations</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
                 Manage and monitor your registered charging stations.
               </p>
+=======
+              <h1 className="mt-2 text-4xl font-semibold text-slate-950">My Stations</h1>
+              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                Add stations you operate, upload CCTV footage, and calibrate detection boxes.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="mt-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                + Add station
+              </button>
+>>>>>>> fedacbd (integrating operator dashboard)
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
@@ -175,10 +231,24 @@ export default function Chargers() {
           </div>
         ) : stationSummaries.totalStations === 0 ? (
           <div className="rounded-4xl border border-slate-200 bg-white p-8 shadow-sm shadow-slate-200/40">
+<<<<<<< HEAD
             <h2 className="text-2xl font-semibold text-slate-950">No charging stations registered yet</h2>
             <p className="mt-3 text-slate-600">
               There are currently no stations available for monitoring. Once stations are registered in Supabase, this page will display them.
             </p>
+=======
+            <h2 className="text-2xl font-semibold text-slate-950">You haven't added a station yet</h2>
+            <p className="mt-3 text-slate-600">
+              Add your first charging station to start uploading footage and calibrating detection boxes.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="mt-6 inline-flex rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              + Add station
+            </button>
+>>>>>>> fedacbd (integrating operator dashboard)
           </div>
         ) : (
           <div className="space-y-6">
@@ -248,7 +318,11 @@ export default function Chargers() {
                       <div className="flex items-center gap-2">
                         {statusBadge(label, tone)}
                       </div>
+<<<<<<< HEAD
                       <div className="flex justify-end">
+=======
+                      <div className="flex justify-end gap-2">
+>>>>>>> fedacbd (integrating operator dashboard)
                         <button
                           type="button"
                           onClick={() => setSelectedStation(station)}
@@ -256,6 +330,15 @@ export default function Chargers() {
                         >
                           View details
                         </button>
+<<<<<<< HEAD
+=======
+                        <Link
+                          to={`/operator/stations/${station.id}`}
+                          className="rounded-full border border-cyan-400 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-500/20"
+                        >
+                          Manage & Calibrate
+                        </Link>
+>>>>>>> fedacbd (integrating operator dashboard)
                       </div>
                     </div>
                   )
@@ -275,6 +358,7 @@ export default function Chargers() {
                 <h2 className="mt-2 text-3xl font-semibold text-slate-950">{selectedStation.name}</h2>
                 <p className="mt-2 text-sm text-slate-600">{selectedStation.address || `${selectedStation.latitude.toFixed(4)}, ${selectedStation.longitude.toFixed(4)}`}</p>
               </div>
+<<<<<<< HEAD
               <button
                 type="button"
                 onClick={() => setSelectedStation(null)}
@@ -282,6 +366,23 @@ export default function Chargers() {
               >
                 Close
               </button>
+=======
+              <div className="flex flex-shrink-0 gap-2">
+                <Link
+                  to={`/operator/stations/${selectedStation.id}`}
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Manage & Calibrate
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStation(null)}
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              </div>
+>>>>>>> fedacbd (integrating operator dashboard)
             </div>
             <div className="mt-8 grid gap-6 lg:grid-cols-2">
               <div className="space-y-5 rounded-3xl border border-slate-200 bg-slate-50 p-6">
@@ -359,6 +460,13 @@ export default function Chargers() {
           </div>
         </div>
       )}
+<<<<<<< HEAD
+=======
+
+      {showAddModal && (
+        <AddStationModal onCreate={handleCreateStation} onClose={() => setShowAddModal(false)} />
+      )}
+>>>>>>> fedacbd (integrating operator dashboard)
     </section>
   )
 }
