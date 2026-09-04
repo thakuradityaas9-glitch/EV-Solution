@@ -20,10 +20,39 @@ conda deactivate
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --no-cache-dir -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 ```
 
 The YOLOv8n weights (~6MB) download automatically on first run.
+
+## Deploy on Render
+
+Create a Web Service with `cv-service` as its Root Directory.
+
+Build command:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Set these environment variables in Render:
+
+- `CV_ALLOWED_ORIGINS` — the deployed frontend origin, such as
+  `https://your-frontend.example.com` (comma-separated for multiple origins)
+- `SUPABASE_URL` — required only when `persist=true` should write occupancy data
+- `SUPABASE_SERVICE_ROLE_KEY` — required only when `persist=true`; keep this server-side
+- `CV_MODEL_PATH` — optional; defaults to `yolov8n.pt`, downloaded on first inference
+- `CV_CONFIDENCE_THRESHOLD` and `CV_AVG_SESSION_MIN` — optional tuning values
+
+The service uses CPU inference and does not require a GPU. The default
+`yolov8n.pt` weights are downloaded at runtime because model files are not
+committed to Git.
 
 **Get the service role key** from Supabase Dashboard → Project Settings
 → API → `service_role` (not `anon` — this key bypasses RLS, so never
@@ -175,8 +204,8 @@ The operator dashboard (`/operator`) has a CCTV upload section per
 station with `cctv_enabled = true`. It posts to
 `src/app/api/stations/[id]/analyze`, which checks the operator owns
 the station, then forwards the upload to this service. Set
-`CV_SERVICE_URL` in the Next.js app's `.env.local` (defaults to
-`http://localhost:8000` for local dev).
+`VITE_CV_SERVICE_URL` in the frontend environment to the Render service URL
+(it defaults to `http://localhost:8000` for local dev).
 
 ## Going from demo to production
 

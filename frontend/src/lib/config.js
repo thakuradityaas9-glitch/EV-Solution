@@ -24,8 +24,8 @@ export const AVG_DETOUR_SPEED_KMH = 25 // local/off-route roads are slower
 // "Wait outweighs the extra distance" reasoning cutoff, in minutes.
 export const WAIT_ADVANTAGE_THRESHOLD_MIN = 5
 
-// The cv-service FastAPI base URL, called directly from the browser
-// (its CORS is wide open — see cv-service/main.py). Set
+// The cv-service FastAPI base URL, called directly from the browser.
+// Set
 // VITE_CV_SERVICE_URL in .env for a deployed cv-service; defaults to
 // local dev.
 export const CV_SERVICE_URL = import.meta.env.VITE_CV_SERVICE_URL || 'http://localhost:8000'

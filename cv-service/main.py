@@ -2,7 +2,7 @@
 CCTV occupancy microservice.
 
 Run locally:
-    uvicorn main:app --reload --port 8000
+    uvicorn app.main:app --reload --port 8000
 
 See README.md for setup (model download, env vars, calling it from the
 operator dashboard).
@@ -10,6 +10,8 @@ operator dashboard).
 
 import io
 import json
+import os
+import tempfile
 from dataclasses import asdict
 
 import cv2
@@ -23,13 +25,17 @@ import supabase_client
 
 app = FastAPI(title="EV Charging — CCTV Occupancy Service")
 
-# Locked down to the Next.js dev/prod origins in production — wide open
-# here since this only ever receives requests proxied through
-# /api/stations/[id]/analyze on the Next.js side, never directly from
-# a browser.
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CV_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -81,6 +87,13 @@ def _result_to_dict(result: occupancy.OccupancyResult) -> dict:
     }
 
 
+def _detect_vehicles(frame: np.ndarray) -> list[occupancy.BBox]:
+    try:
+        return occupancy.detect_vehicles(frame)
+    except occupancy.InferenceBusyError as exc:
+        raise HTTPException(429, str(exc)) from exc
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "supabase_configured": supabase_client.is_configured()}
@@ -113,6 +126,7 @@ async def analyze_frame(
     """
     data = await file.read()
     frame = _read_image(data)
+    del data
 
     parsed_charger_rois = _parse_rois(charger_rois, "charger")
     parsed_queue_rois = _parse_rois(queue_rois, "queue")
@@ -120,9 +134,12 @@ async def analyze_frame(
         h, w = frame.shape[:2]
         parsed_queue_rois = occupancy.auto_queue_roi(w, h)
 
-    result = occupancy.analyze_frame(
-        frame, total_chargers, parsed_charger_rois, parsed_queue_rois
-    )
+    try:
+        result = occupancy.analyze_frame(
+            frame, total_chargers, parsed_charger_rois, parsed_queue_rois
+        )
+    except occupancy.InferenceBusyError as exc:
+        raise HTTPException(429, str(exc)) from exc
 
     write_error = None
     if persist:
@@ -159,6 +176,7 @@ async def analyze_frame_debug(
     """
     data = await file.read()
     frame = _read_image(data)
+    del data
     h, w = frame.shape[:2]
 
     parsed_charger_rois = _parse_rois(charger_rois, "charger") or occupancy.auto_grid_rois(
@@ -166,7 +184,7 @@ async def analyze_frame_debug(
     )
     parsed_queue_rois = _parse_rois(queue_rois, "queue") or occupancy.auto_queue_roi(w, h)
 
-    vehicles = occupancy.detect_vehicles(frame)
+    vehicles = _detect_vehicles(frame)
     slot_results = occupancy.assign_to_rois(vehicles, parsed_charger_rois)
     queue_length = occupancy.count_vehicles_in_regions(vehicles, parsed_queue_rois)
 
@@ -199,94 +217,98 @@ async def analyze_video(
     a single frame — one delivery truck double-parked in frame 1
     shouldn't flip a slot's status on its own.
     """
-    data = await file.read()
-
-    tmp_path = "/tmp/_cv_upload.mp4"
-    with open(tmp_path, "wb") as f:
-        f.write(data)
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
+        tmp_path = temp_file.name
+        while chunk := await file.read(1024 * 1024):
+            temp_file.write(chunk)
 
     cap = cv2.VideoCapture(tmp_path)
-    if not cap.isOpened():
-        raise HTTPException(400, "Could not open video — is it a valid video file?")
+    try:
+        if not cap.isOpened():
+            raise HTTPException(400, "Could not open video — is it a valid video file?")
 
-    frame_idx = 0
-    samples_taken = 0
-    parsed_charger_rois = None
-    parsed_queue_rois = None
-    occupied_tally: dict[str, int] = {}
-    queue_counts: list[int] = []
-    slot_labels: list[str] = []
+        frame_idx = 0
+        samples_taken = 0
+        parsed_charger_rois = None
+        parsed_queue_rois = None
+        occupied_tally: dict[str, int] = {}
+        queue_counts: list[int] = []
+        slot_labels: list[str] = []
 
-    while samples_taken < max_samples:
-        ok, frame = cap.read()
-        if not ok:
-            break
-        if frame_idx % sample_every_n_frames == 0:
-            h, w = frame.shape[:2]
-            if parsed_charger_rois is None:
-                parsed_charger_rois = _parse_rois(
-                    charger_rois, "charger"
-                ) or occupancy.auto_grid_rois(w, h, total_chargers)
-                parsed_queue_rois = _parse_rois(
-                    queue_rois, "queue"
-                ) or occupancy.auto_queue_roi(w, h)
-                slot_labels = [r.slot_label for r in parsed_charger_rois]
-                occupied_tally = {label: 0 for label in slot_labels}
+        while samples_taken < max_samples:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if frame_idx % sample_every_n_frames == 0:
+                h, w = frame.shape[:2]
+                if parsed_charger_rois is None:
+                    parsed_charger_rois = _parse_rois(
+                        charger_rois, "charger"
+                    ) or occupancy.auto_grid_rois(w, h, total_chargers)
+                    parsed_queue_rois = _parse_rois(
+                        queue_rois, "queue"
+                    ) or occupancy.auto_queue_roi(w, h)
+                    slot_labels = [r.slot_label for r in parsed_charger_rois]
+                    occupied_tally = {label: 0 for label in slot_labels}
 
-            vehicles = occupancy.detect_vehicles(frame)
-            slot_results = occupancy.assign_to_rois(vehicles, parsed_charger_rois)
-            for s in slot_results:
-                if s.occupied:
-                    occupied_tally[s.slot_label] += 1
-            queue_counts.append(
-                occupancy.count_vehicles_in_regions(vehicles, parsed_queue_rois)
-            )
-            samples_taken += 1
-        frame_idx += 1
+                vehicles = _detect_vehicles(frame)
+                slot_results = occupancy.assign_to_rois(vehicles, parsed_charger_rois)
+                for s in slot_results:
+                    if s.occupied:
+                        occupied_tally[s.slot_label] += 1
+                queue_counts.append(
+                    occupancy.count_vehicles_in_regions(vehicles, parsed_queue_rois)
+                )
+                samples_taken += 1
+            frame_idx += 1
 
-    cap.release()
+        if samples_taken == 0:
+            raise HTTPException(400, "No frames could be read from the video")
 
-    if samples_taken == 0:
-        raise HTTPException(400, "No frames could be read from the video")
+        # A slot counts as "occupied" if it was occupied in the majority of
+        # sampled frames — smooths over single-frame detection misses.
+        final_slots = [
+            occupancy.SlotResult(slot_label=label, occupied=(count / samples_taken) >= 0.5)
+            for label, count in occupied_tally.items()
+        ]
+        occupied_count = sum(1 for s in final_slots if s.occupied)
+        # Queue length: median across samples rather than mean — a queue
+        # briefly spiking to double length for one frame (e.g. a car just
+        # passing through, not actually joining) shouldn't skew the estimate
+        # the way an outlier would skew a mean.
+        queue_counts.sort()
+        queue_length = queue_counts[len(queue_counts) // 2] if queue_counts else 0
 
-    # A slot counts as "occupied" if it was occupied in the majority of
-    # sampled frames — smooths over single-frame detection misses.
-    final_slots = [
-        occupancy.SlotResult(slot_label=label, occupied=(count / samples_taken) >= 0.5)
-        for label, count in occupied_tally.items()
-    ]
-    occupied_count = sum(1 for s in final_slots if s.occupied)
-    # Queue length: median across samples rather than mean — a queue
-    # briefly spiking to double length for one frame (e.g. a car just
-    # passing through, not actually joining) shouldn't skew the estimate
-    # the way an outlier would skew a mean.
-    queue_counts.sort()
-    queue_length = queue_counts[len(queue_counts) // 2] if queue_counts else 0
-
-    result = occupancy.OccupancyResult(
-        total_chargers=len(final_slots),
-        occupied_count=occupied_count,
-        available_count=len(final_slots) - occupied_count,
-        queue_length=queue_length,
-        predicted_wait_min=occupancy.estimate_wait_minutes(
-            occupied_count, len(final_slots), queue_length
-        ),
-        slots=final_slots,
-    )
-
-    write_error = None
-    if persist:
-        write_error = await supabase_client.write_occupancy_result(
-            station_id=station_id,
-            occupied_count=result.occupied_count,
-            total_chargers=result.total_chargers,
-            predicted_wait_min=result.predicted_wait_min,
-            queue_length=result.queue_length,
+        result = occupancy.OccupancyResult(
+            total_chargers=len(final_slots),
+            occupied_count=occupied_count,
+            available_count=len(final_slots) - occupied_count,
+            queue_length=queue_length,
+            predicted_wait_min=occupancy.estimate_wait_minutes(
+                occupied_count, len(final_slots), queue_length
+            ),
+            slots=final_slots,
         )
 
-    response = _result_to_dict(result)
-    response["station_id"] = station_id
-    response["samples_analyzed"] = samples_taken
-    if write_error:
-        response["write_warning"] = write_error
-    return response
+        write_error = None
+        if persist:
+            write_error = await supabase_client.write_occupancy_result(
+                station_id=station_id,
+                occupied_count=result.occupied_count,
+                total_chargers=result.total_chargers,
+                predicted_wait_min=result.predicted_wait_min,
+                queue_length=result.queue_length,
+            )
+
+        response = _result_to_dict(result)
+        response["station_id"] = station_id
+        response["samples_analyzed"] = samples_taken
+        if write_error:
+            response["write_warning"] = write_error
+        return response
+    finally:
+        cap.release()
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass

@@ -12,10 +12,15 @@ session duration later without changing the shape of the output.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+import logging
 import os
+import threading
+import time
+from typing import Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # COCO class ids for vehicle-like classes: car, motorcycle, bus, truck.
 # (0=person, 1=bicycle are deliberately excluded.)
@@ -81,6 +86,11 @@ class OccupancyResult:
 
 
 _model = None
+_inference_lock = threading.Lock()
+
+
+class InferenceBusyError(RuntimeError):
+    """Raised when this single-worker process is already running inference."""
 
 
 def get_model():
@@ -91,33 +101,59 @@ def get_model():
     if _model is None:
         from ultralytics import YOLO
 
-        _model = YOLO(os.environ.get("CV_MODEL_PATH", "yolov8n.pt"))
+        model_path = os.environ.get("CV_MODEL_PATH", "yolov8n.pt")
+        logger.info("Loading YOLO model from %s", model_path)
+        _model = YOLO(model_path)
+        logger.info("YOLO model loaded")
     return _model
 
 
 def detect_vehicles(frame: np.ndarray) -> list[BBox]:
     """Runs YOLO on a single frame, returns vehicle-class detections."""
-    model = get_model()
-    results = model.predict(frame, verbose=False, conf=CONFIDENCE_THRESHOLD)
+    if not _inference_lock.acquire(blocking=False):
+        logger.warning("Skipping inference because another request is already running")
+        raise InferenceBusyError("Another inference request is already running")
 
-    boxes: list[BBox] = []
-    for result in results:
-        for box in result.boxes:
-            class_id = int(box.cls[0])
-            if class_id not in VEHICLE_CLASS_IDS:
-                continue
-            x1, y1, x2, y2 = [float(v) for v in box.xyxy[0]]
-            boxes.append(
-                BBox(
-                    x1=x1,
-                    y1=y1,
-                    x2=x2,
-                    y2=y2,
-                    confidence=float(box.conf[0]),
-                    class_id=class_id,
-                )
+    started_at = time.perf_counter()
+    try:
+        import torch
+
+        model = get_model()
+        with torch.inference_mode():
+            results = model.predict(
+                frame,
+                conf=CONFIDENCE_THRESHOLD,
+                device="cpu",
+                imgsz=320,
+                verbose=False,
             )
-    return boxes
+
+        boxes: list[BBox] = []
+        for result in results:
+            for box in result.boxes:
+                class_id = int(box.cls[0])
+                if class_id not in VEHICLE_CLASS_IDS:
+                    continue
+                x1, y1, x2, y2 = [float(v) for v in box.xyxy[0]]
+                boxes.append(
+                    BBox(
+                        x1=x1,
+                        y1=y1,
+                        x2=x2,
+                        y2=y2,
+                        confidence=float(box.conf[0]),
+                        class_id=class_id,
+                    )
+                )
+        del results
+        logger.info(
+            "YOLO inference completed in %.3fs (%d vehicle detections)",
+            time.perf_counter() - started_at,
+            len(boxes),
+        )
+        return boxes
+    finally:
+        _inference_lock.release()
 
 
 def auto_grid_rois(

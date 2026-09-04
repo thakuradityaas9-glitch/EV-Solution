@@ -57,6 +57,7 @@ export default function StationDetail() {
   const videoRef = useRef(null)
   const fileInputRef = useRef(null)
   const pollIntervalRef = useRef(null)
+  const pollInFlightRef = useRef(false)
   const prevOccupiedRef = useRef({}) // slot_label -> bool, across polls
 
   const load = useCallback(async () => {
@@ -126,7 +127,9 @@ export default function StationDetail() {
 
   const pollOnce = useCallback(async () => {
     const video = videoRef.current
-    if (!video || !station?.chargerRois?.length) return
+    if (!video || !station?.chargerRois?.length || pollInFlightRef.current) return
+
+    pollInFlightRef.current = true
 
     try {
       const blob = await captureVideoFrameBlob(video)
@@ -173,6 +176,8 @@ export default function StationDetail() {
       }
     } catch (err) {
       setPollError(err?.message || 'Frame analysis failed.')
+    } finally {
+      pollInFlightRef.current = false
     }
   }, [station])
 
