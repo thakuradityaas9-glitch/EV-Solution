@@ -385,7 +385,7 @@ export default function DriverHome() {
                       {remainingRangeKm == null ? 'Range unavailable' : `≈ ${remainingRangeKm} km remaining`}
                     </span>
                   </div>
-                  {/* <input
+                  <input
                     type="range"
                     min="0"
                     max="100"
@@ -394,7 +394,7 @@ export default function DriverHome() {
                     onChange={(event) => setChargePercent(Number(event.target.value))}
                     className="mt-2 h-2 w-full accent-blue-600"
                     aria-label="Battery percentage for this search"
-                  /> */}
+                  />
                   <p className="mt-1 text-xs text-slate-500">
                     Full-charge range: {fullChargeRangeKm == null ? 'not listed' : `${fullChargeRangeKm} km`}. Trip estimate only; the saved battery level is unchanged.
                   </p>
