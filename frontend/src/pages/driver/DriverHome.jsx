@@ -14,7 +14,12 @@ import { rankStations } from '../../services/chargerRecommendation.js'
 
 export default function DriverHome() {
   const { profile } = useAuth()
-  const { activeVehicle, loading: vehiclesLoading, error: vehicleError } = useDriverVehicles()
+  const {
+    activeVehicle,
+    loading: vehiclesLoading,
+    error: vehicleError,
+    editVehicle,
+  } = useDriverVehicles()
 
   const [fromText, setFromText] = useState('')
   const [useCurrentLocation, setUseCurrentLocation] = useState(false)
@@ -33,6 +38,7 @@ export default function DriverHome() {
   const [hoveredStationId, setHoveredStationId] = useState(null)
   const [mapExpanded, setMapExpanded] = useState(false) // mobile only: taller map
   const panelRef = useRef(null)
+  const searchInFlightRef = useRef(false)
 
   const fullChargeRangeKm = activeVehicle
     ? activeVehicle.custom_range_km ?? activeVehicle.vehicle_model?.reference_range_km ?? null
@@ -96,17 +102,24 @@ export default function DriverHome() {
     }
   }
 
-  async function buildRankedStationsForRoute(route, emergencyModeOverride = emergencyActive) {
+  async function buildRankedStationsForRoute(
+    route,
+    emergencyModeOverride = emergencyActive,
+    vehicleOverride = vehicle,
+    remainingRangeOverride = remainingRangeKm
+  ) {
     const allStations = await fetchAllStations({
   lat: route.path?.[0]?.lat,
   lng: route.path?.[0]?.lng,
 })
     const routePath = route?.path || []
     const candidates = discoverStationsAlongRoute(routePath, allStations)
-    return rankStations(candidates, vehicle, emergencyModeOverride, remainingRangeKm)
+    return rankStations(candidates, vehicleOverride, emergencyModeOverride, remainingRangeOverride)
   }
 
-  async function runSearch(emergencyMode) {
+  async function runSearch(emergencyMode, persistBattery = true) {
+    if (searchInFlightRef.current) return
+
     if (!useCurrentLocation && !fromText.trim()) {
       setSearchError('Enter a starting point, or use your current location.')
       return
@@ -116,10 +129,33 @@ export default function DriverHome() {
       return
     }
 
+    const batteryPercentForSearch = chargePercent
+    const vehicleForSearch = vehicle
+      ? { ...vehicle, batteryPercent: batteryPercentForSearch }
+      : null
+    const remainingRangeForSearch = fullChargeRangeKm == null
+      ? null
+      : Math.round((fullChargeRangeKm * batteryPercentForSearch) / 100)
+    const activeVehicleId = activeVehicle?.id
+
+    searchInFlightRef.current = true
     setSearching(true)
     setSearchError(null)
 
     try {
+      if (persistBattery && activeVehicleId) {
+        try {
+          await editVehicle(activeVehicleId, {
+            current_battery_percent: batteryPercentForSearch,
+          })
+        } catch (error) {
+          setSearchError(
+            `Could not save the battery percentage. Charger search was not started. ${error.message || 'Please try again.'}`
+          )
+          return
+        }
+      }
+
       const origin = useCurrentLocation
         ? originCoords || (await getCurrentLocation())
         : await geocodeAddress(fromText)
@@ -131,7 +167,12 @@ export default function DriverHome() {
         selectedStation
       )
 
-      const ranked = await buildRankedStationsForRoute(route, emergencyMode)
+      const ranked = await buildRankedStationsForRoute(
+        route,
+        emergencyMode,
+        vehicleForSearch,
+        remainingRangeForSearch
+      )
 
       setResult({
         route,
@@ -152,13 +193,14 @@ export default function DriverHome() {
       setSearchError(err.message || 'Search failed')
     } finally {
       setSearching(false)
+      searchInFlightRef.current = false
     }
   }
 
   function handleToggleEmergency() {
     const next = !emergencyActive
     if (result) {
-      runSearch(next)
+      runSearch(next, false)
     } else {
       setEmergencyActive(next)
     }
@@ -392,7 +434,8 @@ export default function DriverHome() {
                     step="1"
                     value={chargePercent}
                     onChange={(event) => setChargePercent(Number(event.target.value))}
-                    className="mt-2 h-2 w-full accent-blue-600"
+                    disabled={searching}
+                    className="mt-2 h-2 w-full accent-blue-600 disabled:opacity-60"
                     aria-label="Battery percentage for this search"
                   />
                   <p className="mt-1 text-xs text-slate-500">
