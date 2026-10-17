@@ -1,6 +1,9 @@
 import { NavLink } from 'react-router-dom'
 
-const links = [{ to: '/driver', label: 'Home' }]
+const links = [
+  { to: '/driver', label: 'Home' },
+  { to: '/driver/vehicles', label: 'Vehicles' },
+]
 
 export default function DriverNav() {
   return (
@@ -9,7 +12,7 @@ export default function DriverNav() {
         <NavLink
           key={link.to}
           to={link.to}
-          end
+          end={link.to === '/driver'}
           className={({ isActive }) =>
             `rounded-full px-3.5 py-1.5 font-medium transition ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`
           }

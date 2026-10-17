@@ -3,6 +3,7 @@ import Landing from './pages/Landing.jsx'
 import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
 import DriverHome from './pages/driver/DriverHome.jsx'
+import Vehicles from './pages/driver/Vehicles.jsx'
 import Recommendations from './pages/driver/Recommendations.jsx'
 import Dashboard from './pages/operator/Dashboard.jsx'
 import LiveOperations from './pages/operator/LiveOperations.jsx'
@@ -41,6 +42,7 @@ function App() {
 
         <Route path="/driver" element={<RequireAuth><RoleGuard role="driver"><DriverLayout /></RoleGuard></RequireAuth>}>
           <Route index element={<DriverHome />} />
+          <Route path="vehicles" element={<Vehicles />} />
           <Route path="recommendations" element={<Recommendations />} />
         </Route>
         <Route path="/operator" element={<RequireAuth><RoleGuard role="operator"><OperatorLayout /></RoleGuard></RequireAuth>}>
