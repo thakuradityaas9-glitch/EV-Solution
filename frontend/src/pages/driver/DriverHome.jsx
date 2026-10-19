@@ -1,35 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import DriverMap from '../../components/driver/DriverMap.jsx'
 import DriverHeader from '../../components/driver/DriverHeader.jsx'
 import StationCard from '../../components/driver/StationCard.jsx'
 import StationDetailsModal from '../../components/driver/StationDetailsModal.jsx'
 import { BoltIcon, CloseIcon, CrosshairIcon, ExpandIcon } from '../../components/driver/icons.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { fetchAllStations, fetchVehicle } from '../../services/stations.js'
+import { useDriverVehicles } from '../../context/driverVehicleStore.js'
+import { fetchAllStations } from '../../services/stations.js'
 import { geocodeAddress, getCurrentLocation, computeRoute } from '../../services/googleRoutes.js'
 import { discoverStationsAlongRoute } from '../../services/discovery.js'
 import { rankStations } from '../../services/chargerRecommendation.js'
-import { VEHICLE_OPTIONS, DEFAULT_SELECTED_VEHICLE_MODEL } from '../../data/vehicles.js'
-
-const DEFAULT_VEHICLE = {
-  model: DEFAULT_SELECTED_VEHICLE_MODEL,
-  batteryPercent: 60,
-  estimatedRangeKm: 465,
-  maxChargingKw: 50,
-  connectorType: 'CCS2',
-}
 
 export default function DriverHome() {
-  const { user, profile } = useAuth()
+  const { profile } = useAuth()
+  const {
+    activeVehicle,
+    loading: vehiclesLoading,
+    error: vehicleError,
+    editVehicle,
+  } = useDriverVehicles()
 
   const [fromText, setFromText] = useState('')
   const [useCurrentLocation, setUseCurrentLocation] = useState(false)
   const [originCoords, setOriginCoords] = useState(null)
   const [toText, setToText] = useState('')
 
-  const [vehicle, setVehicle] = useState(DEFAULT_VEHICLE)
-  const [vehicleLoaded, setVehicleLoaded] = useState(false)
-  const [chargePercent, setChargePercent] = useState(DEFAULT_VEHICLE.batteryPercent)
+  const [chargePercent, setChargePercent] = useState(60)
 
   const [emergencyActive, setEmergencyActive] = useState(false)
   const [selectedStation, setSelectedStation] = useState(null)
@@ -41,46 +38,29 @@ export default function DriverHome() {
   const [hoveredStationId, setHoveredStationId] = useState(null)
   const [mapExpanded, setMapExpanded] = useState(false) // mobile only: taller map
   const panelRef = useRef(null)
+  const searchInFlightRef = useRef(false)
 
-  const selectedVehicleConfig =
-    VEHICLE_OPTIONS.find((option) => option.model === vehicle.model) || VEHICLE_OPTIONS[0]
-
-  const remainingRangeKm = Math.round(
-    ((selectedVehicleConfig?.rangeKm ?? vehicle.estimatedRangeKm ?? 0) * chargePercent) / 100
-  )
-
-  // Load the driver's saved vehicle on mount, if they have one.
-  useEffect(() => {
-    let mounted = true
-    if (!user?.id) {
-      setVehicleLoaded(true) // nothing to load — don't leave the UI stuck disabled
-      return
-    }
-    fetchVehicle(user.id)
-      .then((v) => {
-        if (mounted && v) {
-          setVehicle(v)
-          setChargePercent(v.batteryPercent ?? DEFAULT_VEHICLE.batteryPercent)
-        }
-        if (mounted) setVehicleLoaded(true)
-      })
-      .catch(() => mounted && setVehicleLoaded(true))
-    return () => {
-      mounted = false
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    setVehicle((current) => {
-      if (!current || !current.model) return current
-      const matchingVehicle = VEHICLE_OPTIONS.find((option) => option.model === current.model)
-      if (!matchingVehicle) return current
-      return {
-        ...current,
-        estimatedRangeKm: matchingVehicle.rangeKm,
+  const fullChargeRangeKm = activeVehicle
+    ? activeVehicle.custom_range_km ?? activeVehicle.vehicle_model?.reference_range_km ?? null
+    : null
+  const vehicle = activeVehicle
+    ? {
+        model: [activeVehicle.vehicle_model?.make, activeVehicle.vehicle_model?.model, activeVehicle.vehicle_model?.variant]
+          .filter(Boolean)
+          .join(' '),
+        batteryPercent: chargePercent,
+        estimatedRangeKm: fullChargeRangeKm,
+        maxChargingKw: activeVehicle.vehicle_model?.max_charging_power_kw ?? null,
+        connectorType: activeVehicle.vehicle_model?.connector_type ?? null,
       }
-    })
-  }, [vehicle.model])
+    : null
+  const remainingRangeKm = fullChargeRangeKm == null
+    ? null
+    : Math.round((fullChargeRangeKm * chargePercent) / 100)
+
+  useEffect(() => {
+    setChargePercent(activeVehicle?.current_battery_percent ?? 60)
+  }, [activeVehicle?.id, activeVehicle?.current_battery_percent])
 
   async function handleUseCurrentLocation(checked) {
     setUseCurrentLocation(checked)
@@ -122,21 +102,24 @@ export default function DriverHome() {
     }
   }
 
-  async function buildRankedStationsForRoute(route, emergencyModeOverride = emergencyActive) {
+  async function buildRankedStationsForRoute(
+    route,
+    emergencyModeOverride = emergencyActive,
+    vehicleOverride = vehicle,
+    remainingRangeOverride = remainingRangeKm
+  ) {
     const allStations = await fetchAllStations({
   lat: route.path?.[0]?.lat,
   lng: route.path?.[0]?.lng,
 })
     const routePath = route?.path || []
     const candidates = discoverStationsAlongRoute(routePath, allStations)
-    return rankStations(candidates, {
-      ...vehicle,
-      batteryPercent: chargePercent,
-      estimatedRangeKm: selectedVehicleConfig?.rangeKm ?? vehicle.estimatedRangeKm ?? 0,
-    }, emergencyModeOverride, remainingRangeKm)
+    return rankStations(candidates, vehicleOverride, emergencyModeOverride, remainingRangeOverride)
   }
 
-  async function runSearch(emergencyMode) {
+  async function runSearch(emergencyMode, persistBattery = true) {
+    if (searchInFlightRef.current) return
+
     if (!useCurrentLocation && !fromText.trim()) {
       setSearchError('Enter a starting point, or use your current location.')
       return
@@ -146,10 +129,33 @@ export default function DriverHome() {
       return
     }
 
+    const batteryPercentForSearch = chargePercent
+    const vehicleForSearch = vehicle
+      ? { ...vehicle, batteryPercent: batteryPercentForSearch }
+      : null
+    const remainingRangeForSearch = fullChargeRangeKm == null
+      ? null
+      : Math.round((fullChargeRangeKm * batteryPercentForSearch) / 100)
+    const activeVehicleId = activeVehicle?.id
+
+    searchInFlightRef.current = true
     setSearching(true)
     setSearchError(null)
 
     try {
+      if (persistBattery && activeVehicleId) {
+        try {
+          await editVehicle(activeVehicleId, {
+            current_battery_percent: batteryPercentForSearch,
+          })
+        } catch (error) {
+          setSearchError(
+            `Could not save the battery percentage. Charger search was not started. ${error.message || 'Please try again.'}`
+          )
+          return
+        }
+      }
+
       const origin = useCurrentLocation
         ? originCoords || (await getCurrentLocation())
         : await geocodeAddress(fromText)
@@ -161,7 +167,12 @@ export default function DriverHome() {
         selectedStation
       )
 
-      const ranked = await buildRankedStationsForRoute(route, emergencyMode)
+      const ranked = await buildRankedStationsForRoute(
+        route,
+        emergencyMode,
+        vehicleForSearch,
+        remainingRangeForSearch
+      )
 
       setResult({
         route,
@@ -182,13 +193,14 @@ export default function DriverHome() {
       setSearchError(err.message || 'Search failed')
     } finally {
       setSearching(false)
+      searchInFlightRef.current = false
     }
   }
 
   function handleToggleEmergency() {
     const next = !emergencyActive
     if (result) {
-      runSearch(next)
+      runSearch(next, false)
     } else {
       setEmergencyActive(next)
     }
@@ -281,17 +293,6 @@ export default function DriverHome() {
     }
   }, [activeId])
 
-  const handleVehicleChange = (event) => {
-    const selectedModel = event.target.value
-    const selectedVehicle = VEHICLE_OPTIONS.find((option) => option.model === selectedModel)
-
-    setVehicle((current) => ({
-      ...current,
-      model: selectedModel,
-      estimatedRangeKm: selectedVehicle?.rangeKm ?? current.estimatedRangeKm,
-    }))
-  }
-
   const inputClass =
     'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
 
@@ -367,7 +368,7 @@ export default function DriverHome() {
               </div>
               <div className="min-w-0 flex-1 space-y-2">
                 {useCurrentLocation ? (
-                  <div className="flex min-h-[2.75rem] items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                  <div className="flex min-h-11 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
                     {originCoords
                       ? `Your location (${originCoords.lat.toFixed(4)}, ${originCoords.lng.toFixed(4)})`
                       : 'Waiting for location access…'}
@@ -408,42 +409,62 @@ export default function DriverHome() {
             </button>
 
             <div className="rounded-xl border border-slate-200 p-3">
-              <label className="block">
-                <span className="sr-only">Select EV</span>
-                <select
-                  value={vehicle.model}
-                  onChange={handleVehicleChange}
-                  className={inputClass}
-                >
-                  {VEHICLE_OPTIONS.map((option) => (
-                    <option key={option.model} value={option.model}>
-                      {option.model}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="mt-3 flex items-baseline justify-between gap-3">
-                <span className="text-sm font-semibold text-slate-900">{chargePercent}% battery</span>
-                <span className="text-xs text-slate-500">≈ {remainingRangeKm} km range</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={chargePercent}
-                onChange={(event) => setChargePercent(Number(event.target.value))}
-                className="mt-2 h-2 w-full accent-blue-600"
-                aria-label="Current charge percentage"
-              />
+              {vehicle ? (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase text-slate-500">Active vehicle</p>
+                      <p className="mt-1 truncate text-sm font-semibold text-slate-900">
+                        {activeVehicle.nickname || vehicle.model || 'Saved vehicle'}
+                      </p>
+                      {activeVehicle.nickname && <p className="truncate text-xs text-slate-500">{vehicle.model}</p>}
+                    </div>
+                    <Link to="/driver/vehicles" className="shrink-0 text-xs font-semibold text-blue-700 hover:underline">Manage</Link>
+                  </div>
+                  <div className="mt-3 flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-900">{chargePercent}% battery for this search</span>
+                    <span className="text-xs text-slate-500">
+                      {remainingRangeKm == null ? 'Range unavailable' : `≈ ${remainingRangeKm} km remaining`}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={chargePercent}
+                    onChange={(event) => setChargePercent(Number(event.target.value))}
+                    disabled={searching}
+                    className="mt-2 h-2 w-full accent-blue-600 disabled:opacity-60"
+                    aria-label="Battery percentage for this search"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Full-charge range: {fullChargeRangeKm == null ? 'not listed' : `${fullChargeRangeKm} km`}. Trip estimate only; the saved battery level is unchanged.
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">No active vehicle</p>
+                    <p className="mt-1 text-xs text-slate-500">Add one to include battery range in charger recommendations.</p>
+                  </div>
+                  <Link to="/driver/vehicles" className="rounded-full border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50">Manage vehicles</Link>
+                </div>
+              )}
             </div>
+
+            {vehicleError && (
+              <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                Vehicle data could not be loaded: {vehicleError}
+              </p>
+            )}
 
             <button
               type="submit"
-              disabled={searching || !vehicleLoaded}
-              className="inline-flex min-h-[2.75rem] w-full items-center justify-center rounded-full bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={searching || vehiclesLoading}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {searching ? 'Finding chargers…' : !vehicleLoaded ? 'Loading…' : 'Find chargers'}
+              {searching ? 'Finding chargers…' : vehiclesLoading ? 'Loading…' : 'Find chargers'}
             </button>
 
             {selectedStation && (
